@@ -2,16 +2,12 @@ version: '3'
 
 services:
   nginx-rtmp:
-    image: tiangolo/nginx-rtmp
+    build: .  # Usar o Dockerfile local
     ports:
-      # Porta RTMP padrão
       - "1935:1935"
-      # Interface web para estatísticas (opcional)
       - "8080:80"
     volumes:
-      # Montando o arquivo de configuração personalizado
       - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./streamRIP:/usr/share/nginx/streamRIP
+      - ./videos:/videos
     restart: unless-stopped
-
-volumes:
-  nginx-conf:
