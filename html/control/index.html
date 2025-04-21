@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Stream</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .stream-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .stream-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+            background-color: #f9f9f9;
+        }
+        .stream-card.active {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+        .stream-card.offline {
+            opacity: 0.6;
+        }
+        .stream-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #F44336;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .fallback-controls {
+            margin-top: 30px;
+            text-align: center;
+        }
+        #status-display {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Controle de Stream para Twitch</h1>
+    
+    <div id="status-display">
+        Status: <span id="current-status">Carregando...</span>
+    </div>
+    
+    <div class="stream-grid" id="stream-container">
+        <!-- Streams serão inseridos aqui via JavaScript -->
+    </div>
+    
+    <div class="fallback-controls">
+        <button id="fallback-button">Usar Vídeo de Fallback</button>
+    </div>
+    
+    <script>
+        // Configuração
+        const streams = ["stream1", "stream2", "stream3", "stream4", "stream5"];
+        const streamLabels = {
+            "stream1": "Stream Principal",
+            "stream2": "Stream 2",
+            "stream3": "Stream 3",
+            "stream4": "Stream 4",
+            "stream5": "Stream 5"
+        };
+        
+        // Estado
+        let activeStream = null;
+        let onlineStreams = [];
+        
+        // Elementos DOM
+        const streamContainer = document.getElementById('stream-container');
+        const statusDisplay = document.getElementById('current-status');
+        const fallbackButton = document.getElementById('fallback-button');
+        
+        // Criar cartões de stream
+        function createStreamCards() {
+            streamContainer.innerHTML = '';
+            
+            streams.forEach(stream => {
+                const card = document.createElement('div');
+                card.className = 'stream-card';
+                card.dataset.stream = stream;
+                
+                const statusIndicator = document.createElement('span');
+                statusIndicator.className = 'stream-status';
+                
+                const nameSpan = document.createElement('h3');
+                nameSpan.textContent = streamLabels[stream] || stream;
+                
+                const statusText = document.createElement('p');
+                
+                const switchButton = document.createElement('button');
+                switchButton.textContent = 'Selecionar';
+                switchButton.onclick = () => switchToStream(stream);
+                
+                card.appendChild(statusIndicator);
+                card.appendChild(nameSpan);
+                card.appendChild(statusText);
+                card.appendChild(switchButton);
+                
+                streamContainer.appendChild(card);
+            });
+        }
+        
+        // Atualizar status dos streams
+        function updateStreamStatus() {
+            fetch('/stat')
+                .then(response => response.text())
+                .then(data => {
+                    // Processar XML de estatísticas do NGINX
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data, "text/xml");
+                    
+                    // Resetar streams online
+                    onlineStreams = [];
+                    
+                    // Buscar todos os aplicativos
+                    const applications = xmlDoc.querySelectorAll('application');
+                    applications.forEach(app => {
+                        const name = app.querySelector('name').textContent;
+                        
+                        if (name === 'live') {
+                            // Buscar todos os streams do aplicativo live
+                            const liveStreams = app.querySelectorAll('stream');
+                            liveStreams.forEach(stream => {
+                                const streamName = stream.querySelector('name').textContent;
+                                if (streams.includes(streamName)) {
+                                    onlineStreams.push(streamName);
+                                }
+                            });
+                        } else if (name === 'twitch') {
+                            // Verificar qual stream está sendo enviado para a twitch
+                            const twitchStreams = app.querySelectorAll('stream');
+                            if (twitchStreams.length > 0) {
+                                // Assume que o primeiro stream é o ativo
+                                // Em um ambiente real, você precisaria de uma maneira de identificar corretamente
+                                activeStream = 'active';
+                            }
+                        }
+                    });
+                    
+                    // Atualizar UI
+                    updateUI();
+                })
+                .catch(error => {
+                    console.error('Erro ao buscar status dos streams:', error);
+                    statusDisplay.textContent = 'Erro ao buscar status dos streams';
+                });
+        }
+        
+        // Atualizar interface
+        function updateUI() {
+            // Atualizar cartões de stream
+            const cards = document.querySelectorAll('.stream-card');
+            cards.forEach(card => {
+                const streamName = card.dataset.stream;
+                const isOnline = onlineStreams.includes(streamName);
+                const isActive = activeStream === streamName;
+                
+                const statusIndicator = card.querySelector('.stream-status');
+                const statusText = card.querySelector('p');
+                const switchButton = card.querySelector('button');
+                
+                // Atualizar classe e status
+                card.className = 'stream-card';
+                if (isActive) card.classList.add('active');
+                if (!isOnline) card.classList.add('offline');
+                
+                // Atualizar indicador de status
+                statusIndicator.className = 'stream-status';
+                statusIndicator.classList.add(isOnline ? 'status-online' : 'status-offline');
+                
+                // Atualizar texto de status
+                statusText.textContent = isOnline ? 'Online' : 'Offline';
+                if (isActive) statusText.textContent += ' (Ativo)';
+                
+                // Atualizar botão
+                switchButton.disabled = isActive || !isOnline;
+            });
+            
+            // Atualizar display de status
+            if (activeStream === 'fallback') {
+                statusDisplay.textContent = 'Reproduzindo vídeo de fallback';
+            } else if (activeStream === null) {
+                statusDisplay.textContent = 'Nenhum stream ativo';
+            } else if (activeStream === 'active') {
+                statusDisplay.textContent = 'Stream ativo (verificando qual...)';
+            } else {
+                statusDisplay.textContent = `Stream ativo: ${streamLabels[activeStream] || activeStream}`;
+            }
+            
+            // Verificar o status do fallback
+            fallbackButton.disabled = activeStream === 'fallback';
+        }
+        
+        // Alternar para um stream específico
+        function switchToStream(stream) {
+            fetch(`/switch?stream=${stream}`, { method: 'POST' })
+                .then(response => {
+                    if (response.ok) {
+                        activeStream = stream;
+                        updateUI();
+                        setTimeout(updateStreamStatus, 1000);
+                    } else {
+                        alert('Falha ao alternar stream. Tente novamente.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao alternar stream:', error);
+                    alert('Erro ao alternar stream. Verifique o console para mais detalhes.');
+                });
+        }
+        
+        // Alternar para o vídeo de fallback
+        fallbackButton.onclick = () => {
+            fetch('/switch?stream=fallback', { method: 'POST' })
+                .then(response => {
+                    if (response.ok) {
+                        activeStream = 'fallback';
+                        updateUI();
+                        setTimeout(updateStreamStatus, 1000);
+                    } else {
+                        alert('Falha ao iniciar fallback. Tente novamente.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao iniciar fallback:', error);
+                    alert('Erro ao iniciar fallback. Verifique o console para mais detalhes.');
+                });
+        };
+        
+        // Inicializar
+        createStreamCards();
+        updateStreamStatus();
+        
+        // Atualizar status a cada 5 segundos
+        setInterval(updateStreamStatus, 5000);
+    </script>
+</body>
+</html>

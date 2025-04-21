@@ -1,39 +1,33 @@
 #!/bin/bash
+# Script executado quando um stream é interrompido
 
+# Obter o diretório atual
 DIR="${BASH_SOURCE%/*}"
 if [[ ! -d "$DIR" ]]; then DIR="$PWD"; fi
+
+# Carregar configurações e utilitários
 . "$DIR/config.sh"
 . "$DIR/util.sh"
 
-me="`basename $0`"
+# Nome do stream (passado pelo nginx como $1)
+STREAM_NAME="$1"
 
-exec 199>$offlo
-if ! flock -xn 199; then
-	errcho "[$me] Failed to aquire lock, exiting..." && exit 1
+# Inicializar workspace
+init_workspace
+
+# Marcar este stream como offline
+rm -f "$WORK_DIR/${STREAM_NAME}_online"
+errcho "Stream $STREAM_NAME está offline"
+
+# Verificar se este era o stream ativo
+if [[ -f $ACTIVE_STREAM_FILE ]]; then
+    ACTIVE_STREAM=$(cat $ACTIVE_STREAM_FILE)
+    
+    if [[ "$ACTIVE_STREAM" == "$STREAM_NAME" ]]; then
+        errcho "O stream ativo foi interrompido. Buscando alternativa..."
+        check_and_switch_stream
+    fi
+else
+    # Verificar se há algum outro stream que podemos usar
+    check_and_switch_stream
 fi
-
-cleanup(){
-	if [[ -f $offpidfi ]]; then
-		errcho "[$me] Removing Offline pid file..."
-		rm -f $offpidfi
-	fi
-	errcho "[$me] Removing Offline lock file..."
-	flock -u 199
-	flock -xn 199 && rm -f $offlo
-}
-
-trap cleanup EXIT
-
-if [[ -f $onpidfi ]]; then
-	onpid=$(<$onpidfi)
-	errcho "[$me] Stopping online stream (pid $onpid)..."
-	rm -f $onpidfi
-	kill $onpid
-fi
-
-errcho "[$me] Starting offline stream..."
-ffmpeg -loglevel warning -stream_loop -1 -re -i $offfi -c copy -f mpegts pipe:1 > $pfi &
-offpid=$!
-errcho "[$me] Offline stream pid $offpid"
-echo $offpid > $offpidfi
-wait $offpid
